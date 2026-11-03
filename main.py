@@ -4,7 +4,9 @@ import telebot
 from telebot import types
 
 # 1. BOT TOKENI
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8937188318:AAHII5aWdC9lKKbJraVU0dhe25DDKNBx7HA")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN muhit o‘zgaruvchisi sozlanmagan")
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -365,6 +367,20 @@ def boshqa_matn(message):
 
 
 # 16. BOTNI ISHGA TUSHIRISH
+
+def run_web_server():
+    import http.server
+    import socketserver
+
+    port = int(os.environ.get("PORT", 8000))
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("0.0.0.0", port), handler) as httpd:
+        httpd.serve_forever()
+
+
 if __name__ == "__main__":
+    from threading import Thread
+
+    Thread(target=run_web_server, daemon=True).start()
     print("Maktab boti ishga tushmoqda...")
     bot.infinity_polling()
