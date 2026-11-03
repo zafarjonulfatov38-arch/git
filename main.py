@@ -4,12 +4,12 @@ import telebot
 from telebot import types
 
 # 1. BOT TOKENI
-TOKEN = "8937188318:AAHII5aWdC9lKKbJraVU0dhe25DDKNBx7HA"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8937188318:AAHII5aWdC9lKKbJraVU0dhe25DDKNBx7HA")
 
 bot = telebot.TeleBot(TOKEN)
 
 # 2. PAPKALAR
-BASE_DIR = os.path.dirname(os.path.abspath(file))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KITOBLAR_DIR = os.path.join(BASE_DIR, "kitoblar")
 
 # 3. ASOSIY MENYU
@@ -147,7 +147,9 @@ def asosiy_menyuni_yubor(chat_id):
 
 def orqaga_tugmasi(tugmalar):
     return tugmalar + ["⬅️ Bosh menyu"]
-[24/10/2026 15:08] Lochinbek Ne'matov: # 8. START
+
+
+# 8. START
 @bot.message_handler(commands=["start"])
 def start(message):
     TARJIMA_REJIMI.discard(message.from_user.id)
@@ -307,7 +309,9 @@ def tarjima_qilish(matn):
         raise ValueError("Tarjima bo‘sh qaytdi")
 
     return tarjima
-[24/10/2026 15:08] Lochinbek Ne'matov: # 13. MAKTAB YANGILIKLARI
+
+
+# 13. MAKTAB YANGILIKLARI
 @bot.message_handler(
     func=lambda m: m.text == "📢 Maktab yangiliklari"
 )
@@ -361,6 +365,6 @@ def boshqa_matn(message):
 
 
 # 16. BOTNI ISHGA TUSHIRISH
-if name == "main":
+if __name__ == "__main__":
     print("Maktab boti ishga tushmoqda...")
     bot.infinity_polling()
