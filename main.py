@@ -1,20 +1,28 @@
 import os
+import logging
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+
 import requests
 import telebot
 from telebot import types
 
-# 1. BOT TOKENI
+# Logging is visible in Render's service logs.
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Configure TELEGRAM_BOT_TOKEN in Render → Environment.
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN muhit o‘zgaruvchisi sozlanmagan")
+    raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
 
 bot = telebot.TeleBot(TOKEN)
 
-# 2. PAPKALAR
+# Folders
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KITOBLAR_DIR = os.path.join(BASE_DIR, "kitoblar")
 
-# 3. ASOSIY MENYU
+# Main menu
 ASOSIY = [
     "📚 Dars jadvali",
     "🌐 Tarjimon",
@@ -23,7 +31,7 @@ ASOSIY = [
     "👥 Koordinatorlar",
 ]
 
-# 4. SINF JADVALLARI
+# Class schedules
 JADVALLAR = {
     "10-A sinf": {
         "Dushanba": [
@@ -101,7 +109,7 @@ JADVALLAR = {
     },
 }
 
-# 5. KITOBLAR
+# PDF filenames in the kitoblar folder
 KITOBLAR = {
     "Asrga tatigulik kun": "ASRGA TATIGULIK KUN voqealari.pdf",
     "Gulliverning sayohatlari":
@@ -112,7 +120,6 @@ KITOBLAR = {
     "Zarbulmasal": "ZARBULMASAL obrazlari va voqealari.pdf",
 }
 
-# 6. KOORDINATORLAR
 KOORDINATORLAR = (
     "👥 MAKTAB KOORDINATORLARI\n\n"
     "🌿 Ekologiya — Muysinova Zilola\n"
@@ -127,12 +134,8 @@ KOORDINATORLAR = (
 TARJIMA_REJIMI = set()
 
 
-# 7. TUGMALAR YASASH
 def menyu_yasash(tugmalar):
-    keyboard = types.ReplyKeyboardMarkup(
-        resize_keyboard=True,
-        row_width=1
-    )
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     for nom in tugmalar:
         keyboard.add(types.KeyboardButton(nom))
     return keyboard
@@ -141,80 +144,56 @@ def menyu_yasash(tugmalar):
 def asosiy_menyuni_yubor(chat_id):
     bot.send_message(
         chat_id,
-        "🏫 Maktab botiga xush kelibsiz!\n\n"
-        "Kerakli bo‘limni tanlang:",
-        reply_markup=menyu_yasash(ASOSIY)
+        "🏫 Maktab botiga xush kelibsiz!\n\nKerakli bo‘limni tanlang:",
+        reply_markup=menyu_yasash(ASOSIY),
     )
 
 
-def orqaga_tugmasi(tugmalar):
-    return tugmalar + ["⬅️ Bosh menyu"]
-
-
-# 8. START
 @bot.message_handler(commands=["start"])
 def start(message):
     TARJIMA_REJIMI.discard(message.from_user.id)
     asosiy_menyuni_yubor(message.chat.id)
 
 
-# 9. BOSH MENYU
 @bot.message_handler(func=lambda m: m.text == "⬅️ Bosh menyu")
 def bosh_menyu(message):
     TARJIMA_REJIMI.discard(message.from_user.id)
     asosiy_menyuni_yubor(message.chat.id)
 
 
-# 10. DARS JADVALI
 @bot.message_handler(func=lambda m: m.text == "📚 Dars jadvali")
 def sinflarni_korsat(message):
-    tugmalar = [
-        "10-A sinf",
-        "11-A sinf",
-        "11-B sinf",
-        "⬅️ Bosh menyu",
-    ]
     bot.send_message(
         message.chat.id,
         "🎓 Sinfingizni tanlang:",
-        reply_markup=menyu_yasash(tugmalar)
+        reply_markup=menyu_yasash([
+            "10-A sinf", "11-A sinf", "11-B sinf", "⬅️ Bosh menyu"
+        ]),
     )
 
 
-@bot.message_handler(
-    func=lambda m: m.text in JADVALLAR
-)
+@bot.message_handler(func=lambda m: m.text in JADVALLAR)
 def sinf_jadvali(message):
     sinf = message.text
-    kunlar = JADVALLAR[sinf]
-
     matn = f"📚 {sinf.upper()} DARS JADVALI\n\n"
-    for kun, fanlar in kunlar.items():
+    for kun, fanlar in JADVALLAR[sinf].items():
         matn += f"📅 {kun}\n"
         for raqam, fan in enumerate(fanlar, start=1):
             matn += f"{raqam}. {fan}\n"
         matn += "\n"
-
     bot.send_message(
         message.chat.id,
         matn,
-        reply_markup=menyu_yasash([
-            "📚 Dars jadvali",
-            "⬅️ Bosh menyu",
-        ])
+        reply_markup=menyu_yasash(["📚 Dars jadvali", "⬅️ Bosh menyu"]),
     )
 
 
-# 11. KUTUBXONA
 @bot.message_handler(func=lambda m: m.text == "📖 Kutubxona")
 def kutubxona(message):
     bot.send_message(
         message.chat.id,
         "📖 Kutubxonaga xush kelibsiz!",
-        reply_markup=menyu_yasash([
-            "📖 Kitob o‘qish",
-            "⬅️ Bosh menyu",
-        ])
+        reply_markup=menyu_yasash(["📖 Kitob o‘qish", "⬅️ Bosh menyu"]),
     )
 
 
@@ -223,9 +202,7 @@ def kitoblar_royxati(message):
     bot.send_message(
         message.chat.id,
         "📚 Kerakli kitobni tanlang:",
-        reply_markup=menyu_yasash(
-            list(KITOBLAR.keys()) + ["⬅️ Bosh menyu"]
-        )
+        reply_markup=menyu_yasash(list(KITOBLAR) + ["⬅️ Bosh menyu"]),
     )
 
 
@@ -235,152 +212,114 @@ def kitob_yuborish(message):
     kerakli_fayl = KITOBLAR[nom]
 
     if not os.path.isdir(KITOBLAR_DIR):
-        bot.send_message(
-            message.chat.id,
-            "❌ kitoblar papkasi topilmadi.\n"
-            "Uni main.py bilan bir papkada saqlang."
-        )
+        bot.send_message(message.chat.id, "❌ kitoblar papkasi topilmadi.")
         return
 
-    # Fayl nomini katta-kichik harflarni hisobga olmasdan qidirish
-    mavjud_fayllar = os.listdir(KITOBLAR_DIR)
     mos_fayl = next(
-        (
-            f for f in mavjud_fayllar
-            if f.casefold() == kerakli_fayl.casefold()
-        ),
-        None
+        (f for f in os.listdir(KITOBLAR_DIR)
+         if f.casefold() == kerakli_fayl.casefold()),
+        None,
     )
-
     if not mos_fayl:
-        bot.send_message(
-            message.chat.id,
-            f"❌ «{kerakli_fayl}» fayli topilmadi.\n"
-            "Fayl nomini va kitoblar papkasini tekshiring."
-        )
+        bot.send_message(message.chat.id, f"❌ «{kerakli_fayl}» fayli topilmadi.")
         return
-
-    fayl_yoli = os.path.join(KITOBLAR_DIR, mos_fayl)
 
     try:
-        with open(fayl_yoli, "rb") as fayl:
-            bot.send_document(
-                message.chat.id,
-                fayl,
-                caption=f"📖 {nom}"
-            )
-    except Exception as xato:
-        print("PDF yuborish xatosi:", repr(xato))
-        bot.send_message(
-            message.chat.id,
-            "❌ Kitobni yuborishda xato yuz berdi."
-        )
+        with open(os.path.join(KITOBLAR_DIR, mos_fayl), "rb") as fayl:
+            bot.send_document(message.chat.id, fayl, caption=f"📖 {nom}")
+    except (OSError, telebot.apihelper.ApiTelegramException) as error:
+        logger.exception("PDF yuborishda xato")
+        bot.send_message(message.chat.id, "❌ Kitobni yuborishda xato yuz berdi.")
 
 
-# 12. TARJIMON
 @bot.message_handler(func=lambda m: m.text == "🌐 Tarjimon")
 def tarjimon(message):
     TARJIMA_REJIMI.add(message.from_user.id)
     bot.send_message(
         message.chat.id,
         "🌐 Inglizcha matn yuboring, men uni o‘zbekchaga tarjima qilaman.\n\n"
-        "Bosh menyuga qaytish uchun «⬅️ Bosh menyu» tugmasini bosing."
+        "Bosh menyuga qaytish uchun «⬅️ Bosh menyu» tugmasini bosing.",
     )
 
 
 def tarjima_qilish(matn):
-    url = "https://api.mymemory.translated.net/get"
     javob = requests.get(
-        url,
-        params={
-            "q": matn,
-            "langpair": "en|uz",
-        },
-        timeout=20
+        "https://api.mymemory.translated.net/get",
+        params={"q": matn, "langpair": "en|uz"},
+        timeout=20,
     )
     javob.raise_for_status()
     malumot = javob.json()
-
     if malumot.get("responseStatus") != 200:
         raise ValueError("Tarjima xizmati javob bermadi")
-
-    tarjima = malumot.get("responseData", {}).get(
-        "translatedText", ""
-    )
+    tarjima = malumot.get("responseData", {}).get("translatedText", "")
     if not tarjima:
         raise ValueError("Tarjima bo‘sh qaytdi")
-
     return tarjima
 
 
-# 13. MAKTAB YANGILIKLARI
-@bot.message_handler(
-    func=lambda m: m.text == "📢 Maktab yangiliklari"
-)
+@bot.message_handler(func=lambda m: m.text == "📢 Maktab yangiliklari")
 def yangiliklar(message):
     bot.send_message(
         message.chat.id,
-        "📢 Maktab yangiliklari bo‘limi.\n\n"
-        "Hozircha yangiliklar kiritilmagan.",
-        reply_markup=menyu_yasash([
-            "⬅️ Bosh menyu"
-        ])
+        "📢 Maktab yangiliklari bo‘limi.\n\nHozircha yangiliklar kiritilmagan.",
+        reply_markup=menyu_yasash(["⬅️ Bosh menyu"]),
     )
 
 
-# 14. KOORDINATORLAR
-@bot.message_handler(
-    func=lambda m: m.text == "👥 Koordinatorlar"
-)
+@bot.message_handler(func=lambda m: m.text == "👥 Koordinatorlar")
 def koordinatorlar(message):
     bot.send_message(
         message.chat.id,
         KOORDINATORLAR,
-        reply_markup=menyu_yasash([
-            "⬅️ Bosh menyu"
-        ])
+        reply_markup=menyu_yasash(["⬅️ Bosh menyu"]),
     )
 
 
-# 15. BOSHQA MATNLAR
 @bot.message_handler(content_types=["text"])
 def boshqa_matn(message):
     if message.from_user.id in TARJIMA_REJIMI:
         try:
             natija = tarjima_qilish(message.text)
+            bot.send_message(message.chat.id, "🇺🇿 Tarjima:\n\n" + natija)
+        except (requests.RequestException, ValueError, KeyError) as error:
+            logger.exception("Tarjima xatosi")
             bot.send_message(
                 message.chat.id,
-                "🇺🇿 Tarjima:\n\n" + natija
-            )
-        except Exception as xato:
-            print("Tarjima xatosi:", repr(xato))
-            bot.send_message(
-                message.chat.id,
-                "❌ Tarjima amalga oshmadi. "
-                "Birozdan keyin qayta urinib ko‘ring."
+                "❌ Tarjima amalga oshmadi. Birozdan keyin qayta urinib ko‘ring.",
             )
     else:
         bot.send_message(
             message.chat.id,
-            "Iltimos, menyudagi tugmalardan birini tanlang."
+            "Iltimos, menyudagi tugmalardan birini tanlang.",
         )
 
 
-# 16. BOTNI ISHGA TUSHIRISH
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path not in ("/", "/health"):
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Not found")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def log_message(self, format, *args):
+        logger.info("HTTP: " + format, *args)
+
 
 def run_web_server():
-    import http.server
-    import socketserver
-
-    port = int(os.environ.get("PORT", 8000))
-    handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("0.0.0.0", port), handler) as httpd:
-        httpd.serve_forever()
+    port = int(os.environ.get("PORT", "10000"))
+    server = ThreadingHTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logger.info("Health-check server listening on port %s", port)
+    server.serve_forever()
 
 
 if __name__ == "__main__":
-    from threading import Thread
-
     Thread(target=run_web_server, daemon=True).start()
-    print("Maktab boti ishga tushmoqda...")
-    bot.infinity_polling()
+    logger.info("Maktab boti ishga tushmoqda...")
+    bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
