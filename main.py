@@ -1,5 +1,6 @@
 import os
 import logging
+import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set")
+
+# Optional: set this in Render to use the official Google Cloud Translation API.
+# Google Cloud Translation requires an API key and a billing-enabled project.
+GOOGLE_TRANSLATE_API_KEY = os.getenv("GOOGLE_TRANSLATE_API_KEY")
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -212,7 +217,12 @@ def kitob_yuborish(message):
     kerakli_fayl = KITOBLAR[nom]
 
     if not os.path.isdir(KITOBLAR_DIR):
-        bot.send_message(message.chat.id, "❌ kitoblar papkasi topilmadi.")
+        bot.send_message(
+            message.chat.id,
+            "❌ Serverda kitoblar/ papkasi topilmadi. PDF fayllarni "
+            "GitHub repo ichidagi kitoblar/ papkasiga yuklab, Render'da "
+            "qayta deploy qilish kerak.",
+        )
         return
 
     mos_fayl = next(
@@ -221,13 +231,18 @@ def kitob_yuborish(message):
         None,
     )
     if not mos_fayl:
-        bot.send_message(message.chat.id, f"❌ «{kerakli_fayl}» fayli topilmadi.")
+        bot.send_message(
+            message.chat.id,
+            f"❌ «{kerakli_fayl}» fayli serverda topilmadi. "
+            "PDF'ni kitoblar/ papkasiga aynan shu nom bilan yuklab, "
+            "Render'da qayta deploy qiling.",
+        )
         return
 
     try:
         with open(os.path.join(KITOBLAR_DIR, mos_fayl), "rb") as fayl:
             bot.send_document(message.chat.id, fayl, caption=f"📖 {nom}")
-    except (OSError, telebot.apihelper.ApiTelegramException) as error:
+    except (OSError, telebot.apihelper.ApiTelegramException):
         logger.exception("PDF yuborishda xato")
         bot.send_message(message.chat.id, "❌ Kitobni yuborishda xato yuz berdi.")
 
@@ -243,6 +258,29 @@ def tarjimon(message):
 
 
 def tarjima_qilish(matn):
+    # Google Cloud Translation is preferred when its API key is configured.
+    if GOOGLE_TRANSLATE_API_KEY:
+        try:
+            javob = requests.post(
+                "https://translation.googleapis.com/language/translate/v2",
+                params={"key": GOOGLE_TRANSLATE_API_KEY},
+                json={
+                    "q": matn,
+                    "source": "en",
+                    "target": "uz",
+                    "format": "text",
+                },
+                timeout=20,
+            )
+            javob.raise_for_status()
+            tarjimalar = javob.json().get("data", {}).get("translations", [])
+            if tarjimalar and tarjimalar[0].get("translatedText"):
+                return html.unescape(tarjimalar[0]["translatedText"])
+            raise ValueError("Google tarjima javobida matn yo‘q")
+        except (requests.RequestException, ValueError, KeyError):
+            logger.exception("Google tarjima xatosi; MyMemory xizmatiga o‘tilmoqda")
+
+    # Fallback works without an API key, but this external service may be rate-limited.
     javob = requests.get(
         "https://api.mymemory.translated.net/get",
         params={"q": matn, "langpair": "en|uz"},
@@ -250,12 +288,15 @@ def tarjima_qilish(matn):
     )
     javob.raise_for_status()
     malumot = javob.json()
-    if malumot.get("responseStatus") != 200:
-        raise ValueError("Tarjima xizmati javob bermadi")
+    if str(malumot.get("responseStatus")) != "200":
+        raise ValueError(
+            "MyMemory javobi muvaffaqiyatsiz: "
+            + str(malumot.get("responseDetails", "noma’lum xato"))
+        )
     tarjima = malumot.get("responseData", {}).get("translatedText", "")
     if not tarjima:
         raise ValueError("Tarjima bo‘sh qaytdi")
-    return tarjima
+    return html.unescape(tarjima)
 
 
 @bot.message_handler(func=lambda m: m.text == "📢 Maktab yangiliklari")
@@ -286,7 +327,8 @@ def boshqa_matn(message):
             logger.exception("Tarjima xatosi")
             bot.send_message(
                 message.chat.id,
-                "❌ Tarjima amalga oshmadi. Birozdan keyin qayta urinib ko‘ring.",
+                "❌ Tarjima xizmati hozir ishlamayapti. Birozdan keyin "
+                "qayta urinib ko‘ring.",
             )
     else:
         bot.send_message(
